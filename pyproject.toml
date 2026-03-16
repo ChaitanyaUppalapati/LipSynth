@@ -1,0 +1,46 @@
+[project]
+name = "lipsynth"
+version = "0.1.0"
+description = "Lip Reading Dataset ETL Pipeline - Build LipVoicer-compatible datasets from YouTube"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Video downloading
+    "yt-dlp>=2024.1.0",
+    
+    # Transcription & Segmentation
+    "openai-whisper>=20231117",
+    "scenedetect>=0.6.0",
+    
+    # Face Detection & Lip ROI
+    "opencv-python>=4.8.0,<4.11",
+    "face-alignment>=1.4.1",
+    "torch>=2.2.0",
+    "imageio-ffmpeg>=0.6.0",
+    "numpy>=1.24.0,<2.0",
+    
+    # General
+    "tqdm>=4.65.0",
+    
+    # Jupyter support
+    "ipykernel>=6.0.0",
+    "ipywidgets>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+]
