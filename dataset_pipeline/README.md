@@ -66,7 +66,7 @@ The pipeline will concatenate them.
 
 ### What to Look For
 
-✅ **Good for lip reading:**
+**Good for lip reading:**
 - Speaker facing camera most of the time
 - Good lighting on the face
 - Minimal head movement / turning away
@@ -75,7 +75,7 @@ The pipeline will concatenate them.
 - At least 720p resolution
 - Single speaker visible (not a panel/debate)
 
-❌ **Avoid:**
+**Avoid:**
 - Music videos, movie clips (copyright + editing)
 - Multi-person debates / roundtables
 - Heavy makeup tutorials (occlude lip area)
