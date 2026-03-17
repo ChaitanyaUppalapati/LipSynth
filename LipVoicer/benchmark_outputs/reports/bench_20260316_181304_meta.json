@@ -1,0 +1,13 @@
+{
+  "run_id": "bench_20260316_181304",
+  "seed": 1337,
+  "max_samples": 24,
+  "device": "cuda",
+  "disable_asr": false,
+  "enable_stoi": true,
+  "enable_pesq": true,
+  "timestamp": "2026-03-16 18:44:29",
+  "inference_script": "/home/shravan/Workspace/LipVoicer/inference_precomputed_npz.py",
+  "config_path": "/home/shravan/Workspace/LipVoicer/configs/config.yaml",
+  "dataset_final": "/home/shravan/Workspace/LipSynth/dataset_pipeline/data/dataset_final"
+}

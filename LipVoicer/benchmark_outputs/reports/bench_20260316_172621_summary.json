@@ -1,0 +1,14 @@
+{
+  "run_id": "bench_20260316_172621",
+  "seed": 1337,
+  "max_samples": 24,
+  "device": "cuda",
+  "total": 24,
+  "ok": 24,
+  "failed": 0,
+  "skipped": 0,
+  "mean_elapsed_s": 62.373156461291615,
+  "mean_wer": NaN,
+  "mean_cer": NaN,
+  "mean_rtf": 15.898856340340705
+}
