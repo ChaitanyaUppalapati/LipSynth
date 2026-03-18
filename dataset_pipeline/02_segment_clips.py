@@ -72,15 +72,19 @@ def _ensure_ffmpeg_shim(ffmpeg_bin: str) -> tuple[str, str]:
     return str(shim_dir), str(shim_ffmpeg)
 
 
-def transcribe_with_whisper(audio_path: str, model_size: str = "base") -> dict:
+def transcribe_with_whisper(audio_path: str, model_size: str = "base", device: str = "auto") -> dict:
     """Transcribe audio using Whisper with word-level timestamps."""
     import whisper
+    import torch
 
-    model = _WHISPER_MODELS.get(model_size)
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    model = _WHISPER_MODELS.get((model_size, device))
     if model is None:
-        print(f"    Loading Whisper model: {model_size}")
-        model = whisper.load_model(model_size)
-        _WHISPER_MODELS[model_size] = model
+        print(f"    Loading Whisper model: {model_size} (device={device})")
+        model = whisper.load_model(model_size, device=device)
+        _WHISPER_MODELS[(model_size, device)] = model
 
     print("    Transcribing audio...")
     return model.transcribe(
@@ -238,7 +242,7 @@ def extract_clip(
     return result.returncode == 0
 
 
-def process_speaker(speaker_dir: str, output_dir: str, whisper_model: str, ffmpeg_bin: str) -> dict:
+def process_speaker(speaker_dir: str, output_dir: str, whisper_model: str, ffmpeg_bin: str, device: str = "auto") -> dict:
     """Process one speaker idempotently and verify completeness."""
     speaker_id = os.path.basename(speaker_dir)
     video_path = os.path.join(speaker_dir, "full_video.mp4")
@@ -261,7 +265,7 @@ def process_speaker(speaker_dir: str, output_dir: str, whisper_model: str, ffmpe
         with open(transcript_path, "r") as f:
             whisper_result = json.load(f)
     else:
-        whisper_result = transcribe_with_whisper(audio_path, whisper_model)
+        whisper_result = transcribe_with_whisper(audio_path, whisper_model, device=device)
         with open(transcript_path, "w") as f:
             json.dump(whisper_result, f, indent=2)
 
@@ -356,6 +360,11 @@ def main():
         choices=["tiny", "base", "small", "medium", "large"],
         help="Whisper model size (larger = more accurate but slower)",
     )
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Torch device to use for Whisper (auto, cpu, cuda, cuda:0, etc.)",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -383,7 +392,13 @@ def main():
         speaker_id = os.path.basename(speaker_dir)
         print(f"[{i}/{len(speaker_dirs)}] Processing {speaker_id}...")
         try:
-            result = process_speaker(speaker_dir, args.output_dir, args.whisper_model, ffmpeg_cmd)
+            result = process_speaker(
+            speaker_dir,
+            args.output_dir,
+            args.whisper_model,
+            ffmpeg_cmd,
+            device=args.device,
+        )
         except Exception as e:
             result = {"status": "error", "speaker_id": speaker_id, "clips": 0, "duration": 0.0, "reason": str(e)}
         all_results.append(result)

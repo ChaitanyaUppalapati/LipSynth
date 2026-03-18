@@ -22,10 +22,10 @@ steps:
     input: data/raw_videos
     output: data/segments
 
-  - id: extract_lip_roi
-    name: Extract Lip ROI
-    script: 03_extract_lip_roi.py
-    description: Detect faces and extract mouth regions
+  - id: extract_visual_features
+    name: Extract Visual ROIs + Features
+    script: 03_extract_visual_features.py
+    description: Detect faces, extract ROIs, and save landmark feature vectors
     input: data/segments
     output: data/lip_rois
 
