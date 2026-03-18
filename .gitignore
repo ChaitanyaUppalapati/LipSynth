@@ -3,3 +3,4 @@ __pycache__
 *.pyc
 dataset_pipeline/data/*
 LipVoicer/benchmark_outputs/runs/*
+.env
