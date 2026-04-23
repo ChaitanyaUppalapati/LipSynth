@@ -1,0 +1,39 @@
+name: lipsynth_pipeline
+description: Lip reading dataset ETL pipeline
+
+steps:
+  - id: fetch_playlist
+    name: Fetch Playlist
+    script: 00_fetch_playlist.py
+    description: Fetch video URLs from YouTube playlist and extract speaker names via LLM
+    output: data/links/video_links.csv
+
+  - id: download_videos
+    name: Download Videos
+    script: 01_download_videos.py
+    description: Download YouTube videos and extract audio
+    input: data/links/video_links.csv
+    output: data/raw_videos
+
+  - id: segment_clips
+    name: Segment Clips
+    script: 02_segment_clips.py
+    description: Transcribe with Whisper and create sentence-level clips
+    input: data/raw_videos
+    output: data/segments
+
+  - id: extract_visual_features
+    name: Extract Visual ROIs + Features
+    script: 03_extract_visual_features.py
+    description: Detect faces, extract ROIs, and save landmark feature vectors
+    input: data/segments
+    output: data/lip_rois
+
+  - id: finalize_dataset
+    name: Finalize Dataset
+    script: 04_finalize_dataset.py
+    description: Create train/val/test splits and manifests
+    input: 
+      - data/segments
+      - data/lip_rois
+    output: data/dataset_final
