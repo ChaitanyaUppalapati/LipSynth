@@ -1,0 +1,42 @@
+[project]
+name = "data255-project"
+version = "0.1.0"
+description = "Stage 1 + Stage 2 lip-to-speech project environment managed with uv."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "ipykernel>=7.2.0",
+  "jiwer>=4.0.0",
+  "matplotlib>=3.10.8",
+  "nbclient>=0.10.4",
+  "nbformat>=5.10.4",
+  "numpy>=2.4.4",
+  "pandas>=3.0.2",
+  "pillow>=11.3.0",
+  "pystoi>=0.4.1",
+  "scikit-learn>=1.8.0",
+  "tensorboard>=2.20.0",
+  "torch>=2.11.0",
+  "torchaudio>=2.11.0",
+  "torchvision>=0.26.0",
+  "tqdm>=4.67.3",
+]
+
+[project.optional-dependencies]
+stage1-pretrained = [
+  "configargparse>=1.7.5",
+  "editdistance>=0.8.1",
+  "gdown>=6.0.0",
+  "librosa>=0.11.0",
+  "opencv-python-headless>=4.13.0.92",
+  "requests>=2.33.1",
+  "sentencepiece>=0.2.1",
+  "torch-complex>=0.4.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
