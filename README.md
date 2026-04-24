@@ -37,7 +37,7 @@ Place the downloaded contents into the matching folders under `Pipeline/`.
 Most importantly:
 
 - `Pipeline/data/` should come from the shared Drive
-- `Pipeline/third_party/` should come from the shared Drive
+- `Pipeline/third_party/` should come from LipVoicer [GitHub Repo](https://github.com/yochaiye/LipVoicer)
 
 These folders are required because they contain large files such as:
 
