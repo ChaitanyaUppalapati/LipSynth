@@ -2,6 +2,9 @@
 __pycache__
 *.pyc
 .env
+AGENTS.md
+CLAUDE.md
+outputs/
 .claude/
 Group5_mid_presentation.pptx
 .codex

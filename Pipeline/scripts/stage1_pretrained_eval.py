@@ -29,17 +29,42 @@ from tqdm.auto import tqdm
 
 REQUIRED_MANIFEST_COLUMNS = ("clip_id", "text", "speaker_id")
 REQUIRED_BENCHMARK_KEYS = ("model_path", "model_conf", "rnnlm", "rnnlm_conf")
-DEFAULT_ROOT = Path("/home/shra012/Data255-Project")
+
+
+def find_pipe_root(start: Path) -> Path:
+    for cand in [start.resolve(), *start.resolve().parents]:
+        if (cand / "pyproject.toml").exists() and (cand / "third_party" / "LipVoicer").exists():
+            return cand
+    raise FileNotFoundError(
+        "Could not locate the Pipeline root. Run this from the repository or pass explicit paths."
+    )
+
+
+PIPE_ROOT = find_pipe_root(Path(__file__).resolve())
+PROJECT_ROOT = PIPE_ROOT.parent
+LIPVOICER_ROOT = PIPE_ROOT / "third_party" / "LipVoicer"
+
+
+def discover_data_root(pipe_root: Path) -> Path:
+    candidates = [
+        pipe_root / "data" / "custom_data",
+        PROJECT_ROOT / "data" / "custom_data",
+    ]
+    for candidate in candidates:
+        if (candidate / "dataset_final" / "train.tsv").exists():
+            return candidate
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DATA_ROOT = discover_data_root(PIPE_ROOT)
 DEFAULT_BENCHMARK_CONFIG = (
-    DEFAULT_ROOT
-    / "third_party"
-    / "LipVoicer"
-    / "mouthroi_processing"
-    / "configs"
-    / "LRS3_V_WER19.1.ini"
+    LIPVOICER_ROOT / "mouthroi_processing" / "configs" / "LRS3_V_WER19.1.ini"
 )
-DEFAULT_OUTPUT_DIR = DEFAULT_ROOT / "outputs" / "stage1_eval" / "pretrained"
-DEFAULT_BASELINE_PATH = DEFAULT_ROOT / "outputs" / "stage1_eval" / "val_predictions_stage1.csv"
+DEFAULT_OUTPUT_DIR = PIPE_ROOT / "outputs" / "stage1_eval" / "pretrained"
+DEFAULT_BASELINE_PATH = PIPE_ROOT / "outputs" / "stage1_eval" / "val_predictions_stage1.csv"
 
 
 @dataclass(frozen=True)
@@ -75,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lip-roi-root",
         type=Path,
-        default=DEFAULT_ROOT / "data" / "lip_rois",
+        default=DATA_ROOT / "lip_rois",
         help="Root containing speaker subdirectories of mouth ROI .npz files.",
     )
     parser.add_argument(
@@ -383,12 +408,14 @@ def compare_with_existing_baseline(baseline_path: Path, pred_df: pd.DataFrame) -
     if not {"gt_text", "pred_text"}.issubset(set(baseline_df.columns)):
         return None
 
-    baseline_gt = baseline_df["gt_text"].astype(str).map(normalize_text).tolist()
-    baseline_pred = baseline_df["pred_text"].astype(str).map(normalize_text).tolist()
+    baseline_gt = baseline_df["gt_text"].fillna("").astype(str).map(normalize_text).tolist()
+    baseline_pred = baseline_df["pred_text"].fillna("").astype(str).map(normalize_text).tolist()
+    current_gt = pred_df["gt_text"].fillna("").astype(str).map(normalize_text).tolist()
+    current_pred = pred_df["pred_text"].fillna("").astype(str).map(normalize_text).tolist()
     baseline_wer = float(jiwer.wer(baseline_gt, baseline_pred))
     baseline_cer = float(jiwer.cer(baseline_gt, baseline_pred))
-    current_wer = float(jiwer.wer(pred_df["gt_text"].tolist(), pred_df["pred_text"].tolist()))
-    current_cer = float(jiwer.cer(pred_df["gt_text"].tolist(), pred_df["pred_text"].tolist()))
+    current_wer = float(jiwer.wer(current_gt, current_pred))
+    current_cer = float(jiwer.cer(current_gt, current_pred))
     return {
         "baseline_path": str(baseline_path),
         "baseline_wer": baseline_wer,
@@ -397,6 +424,59 @@ def compare_with_existing_baseline(baseline_path: Path, pred_df: pd.DataFrame) -
         "current_cer": current_cer,
         "wer_delta": current_wer - baseline_wer,
         "cer_delta": current_cer - baseline_cer,
+    }
+
+
+def build_prediction_summary(pred_df: pd.DataFrame) -> dict[str, Any]:
+    pred_text = pred_df["pred_text"].fillna("").astype(str)
+    gt_text = pred_df["gt_text"].fillna("").astype(str)
+    sample_columns = [
+        "clip_id",
+        "speaker_id",
+        "gt_text",
+        "pred_text",
+        "wer",
+        "cer",
+        "sequence_confidence",
+    ]
+    hardest_examples = (
+        pred_df.sort_values(["wer", "cer", "sequence_confidence"], ascending=[False, False, True])[sample_columns]
+        .head(5)
+        .to_dict(orient="records")
+    )
+    lowest_confidence_examples = (
+        pred_df.sort_values(["sequence_confidence", "wer", "cer"], ascending=[True, False, False])[sample_columns]
+        .head(5)
+        .to_dict(orient="records")
+    )
+    sampled_examples = pred_df[sample_columns].head(5).to_dict(orient="records")
+    return {
+        "prediction_length": {
+            "mean_pred_chars": float(pred_text.str.len().mean()),
+            "mean_gt_chars": float(gt_text.str.len().mean()),
+            "empty_predictions": int((pred_text.str.len() == 0).sum()),
+            "unique_prediction_ratio": float(pred_text.nunique() / max(len(pred_df), 1)),
+        },
+        "confidence": {
+            "mean": float(pred_df["sequence_confidence"].mean()),
+            "std": float(pred_df["sequence_confidence"].std()) if len(pred_df) > 1 else 0.0,
+            "min": float(pred_df["sequence_confidence"].min()),
+            "max": float(pred_df["sequence_confidence"].max()),
+        },
+        "speaker_metrics": (
+            pred_df.groupby("speaker_id", as_index=False)
+            .agg(
+                n=("clip_id", "count"),
+                wer=("wer", "mean"),
+                cer=("cer", "mean"),
+                confidence=("sequence_confidence", "mean"),
+            )
+            .sort_values(["wer", "cer"], ascending=[False, False])
+            .to_dict(orient="records")
+        ),
+        "sample_predictions": sampled_examples,
+        "hardest_examples": hardest_examples,
+        "lowest_confidence_examples": lowest_confidence_examples,
     }
 
 
@@ -425,8 +505,11 @@ def export_results(
     handoff_df["visual_embedding_path"] = ""
     handoff_df.to_csv(handoff_path, index=False)
 
-    overall_wer = float(jiwer.wer(pred_df["gt_text"].tolist(), pred_df["pred_text"].tolist()))
-    overall_cer = float(jiwer.cer(pred_df["gt_text"].tolist(), pred_df["pred_text"].tolist()))
+    gt_text = pred_df["gt_text"].fillna("").astype(str).map(normalize_text).tolist()
+    pred_text = pred_df["pred_text"].fillna("").astype(str).map(normalize_text).tolist()
+    overall_wer = float(jiwer.wer(gt_text, pred_text))
+    overall_cer = float(jiwer.cer(gt_text, pred_text))
+    prediction_summary = build_prediction_summary(pred_df)
     summary = {
         "split": split,
         "num_predictions": int(len(pred_df)),
@@ -444,6 +527,7 @@ def export_results(
         "rnnlm_path": str(assets.rnnlm_path),
         "rnnlm_conf": str(assets.rnnlm_conf),
         "baseline_comparison": baseline_comparison,
+        "prediction_summary": prediction_summary,
         "outputs": {
             "predictions_csv": str(pred_path),
             "stage2_handoff_csv": str(handoff_path),
@@ -456,6 +540,8 @@ def export_results(
 
 def attach_metrics(pred_df: pd.DataFrame) -> pd.DataFrame:
     pred_df = pred_df.copy()
+    pred_df["gt_text"] = pred_df["gt_text"].fillna("").astype(str).map(normalize_text)
+    pred_df["pred_text"] = pred_df["pred_text"].fillna("").astype(str).map(normalize_text)
     pred_df["cer"] = [
         float(jiwer.cer(ref, hyp)) for ref, hyp in zip(pred_df["gt_text"], pred_df["pred_text"])
     ]
@@ -469,7 +555,7 @@ def main() -> None:
     args = parse_args()
     device = resolve_device(args.device)
     split = args.split
-    manifest_tsv = args.manifest_tsv or (DEFAULT_ROOT / "data" / "dataset_final" / f"{split}.tsv")
+    manifest_tsv = args.manifest_tsv or (DATA_ROOT / "dataset_final" / f"{split}.tsv")
     manifest = read_manifest(manifest_tsv, args.max_samples, args.sample_clip_id)
     assets = load_benchmark_assets(args.benchmark_config)
     runner = PretrainedStage1Runner(assets, device=device)
