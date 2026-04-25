@@ -52,6 +52,41 @@ The script now resolves repo-local defaults automatically, so it can be run from
 uv run python scripts/stage1_pretrained_eval.py --split val --max-samples 1
 ```
 
+## Stage 1 Retraining Track
+
+The repo-native CNN/Transformer/CTC Stage 1 model now has a scriptable train/eval path:
+
+```bash
+uv run python scripts/stage1_train_ctc.py --epochs 20 --augment
+```
+
+Useful smoke test:
+
+```bash
+uv run python scripts/stage1_train_ctc.py \
+  --epochs 1 \
+  --max-train-samples 8 \
+  --max-val-samples 4 \
+  --max-steps-per-epoch 1 \
+  --batch-size 2 \
+  --output-dir outputs/stage1_eval/retrain_smoke
+```
+
+Outputs are written under `outputs/stage1_eval/retrain/` by default:
+
+- `stage1_ctc_best.pt`
+- `val_predictions_stage1_retrain.csv`
+- `train_history_stage1_retrain.csv`
+- `val_summary_stage1_retrain.json`
+
+Evaluate a saved CTC checkpoint without retraining:
+
+```bash
+uv run python scripts/stage1_train_ctc.py \
+  --eval-only \
+  --checkpoint outputs/stage1_eval/retrain/stage1_ctc_best.pt
+```
+
 ## Stage 2 Evaluation
 
 Full Stage 2 evaluation, full-test metrics export, and guidance ablation now live in a reusable script instead of only inside the notebook:
