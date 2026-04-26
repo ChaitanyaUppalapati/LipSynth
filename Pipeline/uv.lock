@@ -124,14 +124,14 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.3.2"
+version = "8.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/75/31212c6bf2503fdf920d87fee5d7a86a2e3bcf444984126f13d8e4016804/click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5", size = 302856, upload-time = "2026-04-03T19:14:45.118Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/2e/0090cbf739cee7d23781ad4b89a9894a41538e4fcf4c31dcdd705b78eb8b/click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a", size = 226593, upload-time = "2024-12-21T18:38:44.339Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/20/71885d8b97d4f3dde17b1fdb92dbd4908b00541c5a3379787137285f602e/click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d", size = 108379, upload-time = "2026-04-03T19:14:43.505Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/d4/7ebdbd03970677812aac39c869717059dbb71a4cfc033ca6e5221787892c/click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2", size = 98188, upload-time = "2024-12-21T18:38:41.666Z" },
 ]
 
 [[package]]
@@ -260,16 +260,20 @@ name = "data255-project"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "gtts" },
     { name = "ipykernel" },
     { name = "jiwer" },
+    { name = "librosa" },
     { name = "matplotlib" },
     { name = "nbclient" },
     { name = "nbformat" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pesq" },
     { name = "pillow" },
     { name = "pystoi" },
     { name = "scikit-learn" },
+    { name = "soundfile" },
     { name = "tensorboard" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -294,8 +298,10 @@ requires-dist = [
     { name = "configargparse", marker = "extra == 'stage1-pretrained'", specifier = ">=1.7.5" },
     { name = "editdistance", marker = "extra == 'stage1-pretrained'", specifier = ">=0.8.1" },
     { name = "gdown", marker = "extra == 'stage1-pretrained'", specifier = ">=6.0.0" },
+    { name = "gtts", specifier = ">=2.5.4" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "jiwer", specifier = ">=4.0.0" },
+    { name = "librosa", specifier = ">=0.11.0" },
     { name = "librosa", marker = "extra == 'stage1-pretrained'", specifier = ">=0.11.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "nbclient", specifier = ">=0.10.4" },
@@ -303,11 +309,13 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "opencv-python-headless", marker = "extra == 'stage1-pretrained'", specifier = ">=4.13.0.92" },
     { name = "pandas", specifier = ">=3.0.2" },
+    { name = "pesq", specifier = ">=0.0.4" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "pystoi", specifier = ">=0.4.1" },
     { name = "requests", marker = "extra == 'stage1-pretrained'", specifier = ">=2.33.1" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "sentencepiece", marker = "extra == 'stage1-pretrained'", specifier = ">=0.2.1" },
+    { name = "soundfile", specifier = ">=0.13.1" },
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.11.0" },
     { name = "torch-complex", marker = "extra == 'stage1-pretrained'", specifier = ">=0.4.4" },
@@ -445,6 +453,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/8d/9d4d27ed7f33d109c50d6b5ce578a9914aa68edab75d65869a17e630a8d1/grpcio-1.80.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:9a6284a5d907c37db53350645567c522be314bac859a64a7a5ca63b77bb7958f", size = 7830132, upload-time = "2026-03-30T08:47:33.254Z" },
     { url = "https://files.pythonhosted.org/packages/14/e4/9990b41c6d7a44e1e9dee8ac11d7a9802ba1378b40d77468a7761d1ad288/grpcio-1.80.0-cp312-cp312-win32.whl", hash = "sha256:c71309cfce2f22be26aa4a847357c502db6c621f1a49825ae98aa0907595b193", size = 4140904, upload-time = "2026-03-30T08:47:35.319Z" },
     { url = "https://files.pythonhosted.org/packages/2f/2c/296f6138caca1f4b92a31ace4ae1b87dab692fc16a7a3417af3bb3c805bf/grpcio-1.80.0-cp312-cp312-win_amd64.whl", hash = "sha256:9fe648599c0e37594c4809d81a9e77bd138cc82eb8baa71b6a86af65426723ff", size = 4880944, upload-time = "2026-03-30T08:47:37.831Z" },
+]
+
+[[package]]
+name = "gtts"
+version = "2.5.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/79/5ddb1dfcd663581d0d3fca34ccb1d8d841b47c22a24dc8dce416e3d87dfa/gtts-2.5.4.tar.gz", hash = "sha256:f5737b585f6442f677dbe8773424fd50697c75bdf3e36443585e30a8d48c1884", size = 24018, upload-time = "2024-11-10T21:58:00.358Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/6c/8b8b1fdcaee7e268536f1bb00183a5894627726b54a9ddc6fc9909888447/gTTS-2.5.4-py3-none-any.whl", hash = "sha256:5dd579377f9f5546893bc26315ab1f846933dc27a054764b168f141065ca8436", size = 29184, upload-time = "2024-11-10T21:57:58.448Z" },
 ]
 
 [[package]]
@@ -1070,6 +1091,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/81/76/a1e769043c0c0c9fe
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b6/61/fae042894f4296ec49e3f193aff5d7c18440da9e48102c3315e1bc4519a7/parso-0.8.6-py2.py3-none-any.whl", hash = "sha256:2c549f800b70a5c4952197248825584cb00f033b29c692671d3bf08bf380baff", size = 106894, upload-time = "2026-02-09T15:45:21.391Z" },
 ]
+
+[[package]]
+name = "pesq"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/22/e6/f8bdcef3238ac10fb3ce37d150e9b03a152d971febd681f088c6e5e17d8e/pesq-0.0.4.tar.gz", hash = "sha256:b724b28f73fb638522982bd68e8c3c0957e2f45210639a460233b17aa7fc890b", size = 38702, upload-time = "2022-05-17T14:15:26.301Z" }
 
 [[package]]
 name = "pexpect"

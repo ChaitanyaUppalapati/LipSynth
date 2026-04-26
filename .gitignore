@@ -8,6 +8,7 @@ outputs/
 .claude/
 Group5_mid_presentation.pptx
 .codex
+Pipeline/demo-dataset/*
 dataset_pipeline/data/*
 LipVoicer/benchmark_outputs/runs/*
 Pipeline/.codex
