@@ -91,6 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--augment", action="store_true", help="Enable ROI augmentation for training.")
     parser.add_argument("--time-mask-frames", type=int, default=8)
     parser.add_argument("--init-checkpoint", type=Path, default=None)
+    parser.add_argument("--resume-checkpoint", type=Path, default=None)
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--checkpoint", type=Path, default=None, help="Checkpoint to evaluate in eval-only mode.")
     parser.add_argument("--pretrained-summary", type=Path, default=DEFAULT_PRETRAINED_SUMMARY)
@@ -457,6 +458,13 @@ def load_checkpoint_vocab(path: Path) -> Vocabulary | None:
     )
 
 
+def move_optimizer_to_device(optimizer: torch.optim.Optimizer, device: torch.device) -> None:
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if isinstance(value, torch.Tensor):
+                state[key] = value.to(device)
+
+
 def build_baseline_comparison(
     pred_df: pd.DataFrame,
     pretrained_summary_path: Path,
@@ -502,6 +510,7 @@ def save_checkpoint(
     args: argparse.Namespace,
     epoch: int,
     metrics: dict[str, float],
+    extra_state: dict[str, Any] | None = None,
 ) -> None:
     payload = {
         "model_state_dict": model.state_dict(),
@@ -511,6 +520,8 @@ def save_checkpoint(
         "epoch": epoch,
         "metrics": metrics,
     }
+    if extra_state:
+        payload.update(extra_state)
     torch.save(payload, path)
 
 
@@ -561,10 +572,6 @@ def main() -> None:
     ctc_loss = nn.CTCLoss(blank=vocab.blank_id, zero_infinity=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    if args.init_checkpoint is not None:
-        model.load_state_dict(load_state_dict(args.init_checkpoint), strict=True)
-        print(f"Loaded initial checkpoint: {args.init_checkpoint}")
-
     if args.eval_only:
         ckpt = args.checkpoint or args.init_checkpoint
         if ckpt is None:
@@ -589,14 +596,43 @@ def main() -> None:
         return
 
     history: list[dict[str, Any]] = []
+    start_epoch = 1
     best_wer = math.inf
     best_metrics: dict[str, float] | None = None
     best_epoch = 0
     stale_epochs = 0
     best_ckpt = args.output_dir / "stage1_ctc_best.pt"
+    last_ckpt = args.output_dir / "stage1_ctc_last.pt"
+    history_path = args.output_dir / "train_history_stage1_retrain.csv"
     last_pred_df: pd.DataFrame | None = None
+    resume_payload: dict[str, Any] | None = None
 
-    for epoch in range(1, args.epochs + 1):
+    if args.resume_checkpoint is not None:
+        resume_payload = torch.load(args.resume_checkpoint, map_location="cpu", weights_only=False)
+        model.load_state_dict(resume_payload["model_state_dict"], strict=True)
+        optimizer_state = resume_payload.get("optimizer_state_dict")
+        if optimizer_state is not None:
+            optimizer.load_state_dict(optimizer_state)
+            move_optimizer_to_device(optimizer, device)
+        history = list(resume_payload.get("history", []))
+        start_epoch = int(resume_payload.get("epoch", 0)) + 1
+        best_metrics = resume_payload.get("best_metrics")
+        best_epoch = int(resume_payload.get("best_epoch", resume_payload.get("epoch", 0)))
+        if best_metrics is None and isinstance(resume_payload.get("metrics"), dict):
+            best_metrics = resume_payload["metrics"]
+        best_wer = float(
+            resume_payload.get(
+                "best_wer",
+                best_metrics.get("overall_wer", math.inf) if best_metrics is not None else math.inf,
+            )
+        )
+        stale_epochs = int(resume_payload.get("stale_epochs", 0))
+        print(f"Resumed training state from: {args.resume_checkpoint} (starting at epoch {start_epoch})")
+    elif args.init_checkpoint is not None:
+        model.load_state_dict(load_state_dict(args.init_checkpoint), strict=True)
+        print(f"Loaded initial checkpoint: {args.init_checkpoint}")
+
+    for epoch in range(start_epoch, args.epochs + 1):
         train_loss = train_one_epoch(
             model,
             train_loader,
@@ -621,22 +657,55 @@ def main() -> None:
             best_metrics = metrics
             best_epoch = epoch
             stale_epochs = 0
-            save_checkpoint(best_ckpt, model, optimizer, vocab, args, epoch, metrics)
+            save_checkpoint(
+                best_ckpt,
+                model,
+                optimizer,
+                vocab,
+                args,
+                epoch,
+                metrics,
+                extra_state={
+                    "history": history,
+                    "best_wer": best_wer,
+                    "best_metrics": best_metrics,
+                    "best_epoch": best_epoch,
+                    "stale_epochs": stale_epochs,
+                },
+            )
         else:
             stale_epochs += 1
+
+        save_checkpoint(
+            last_ckpt,
+            model,
+            optimizer,
+            vocab,
+            args,
+            epoch,
+            metrics,
+            extra_state={
+                "history": history,
+                "best_wer": best_wer,
+                "best_metrics": best_metrics,
+                "best_epoch": best_epoch,
+                "stale_epochs": stale_epochs,
+            },
+        )
+        pd.DataFrame(history).to_csv(history_path, index=False)
 
         if stale_epochs >= args.patience:
             print(f"Early stopping after {stale_epochs} stale epochs.")
             break
 
-    if not best_ckpt.exists():
+    if not best_ckpt.exists() and not last_ckpt.exists():
         raise RuntimeError("Training finished without writing a best checkpoint.")
 
-    model.load_state_dict(load_state_dict(best_ckpt), strict=True)
+    final_ckpt = best_ckpt if best_ckpt.exists() else last_ckpt
+    model.load_state_dict(load_state_dict(final_ckpt), strict=True)
     best_pred_df, best_eval_metrics = evaluate(model, val_loader, ctc_loss, vocab, device)
     pred_path = args.output_dir / "val_predictions_stage1_retrain.csv"
     summary_path = args.output_dir / "val_summary_stage1_retrain.json"
-    history_path = args.output_dir / "train_history_stage1_retrain.csv"
     best_pred_df.to_csv(pred_path, index=False)
     pd.DataFrame(history).to_csv(history_path, index=False)
     baseline = build_baseline_comparison(best_pred_df, args.pretrained_summary, args.pretrained_predictions)
@@ -649,10 +718,12 @@ def main() -> None:
         "best_metrics": best_metrics,
         "best_eval_metrics": best_eval_metrics,
         "baseline_comparison": baseline,
-            "config": to_jsonable(vars(args)),
+        "config": to_jsonable(vars(args)),
         "vocab_size": len(vocab.idx_to_token),
         "outputs": {
-            "best_checkpoint": str(best_ckpt),
+            "best_checkpoint": str(best_ckpt if best_ckpt.exists() else final_ckpt),
+            "last_checkpoint": str(last_ckpt),
+            "selected_checkpoint": str(final_ckpt),
             "predictions_csv": str(pred_path),
             "history_csv": str(history_path),
         },

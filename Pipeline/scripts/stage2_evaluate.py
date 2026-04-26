@@ -26,7 +26,10 @@ try:
 except ImportError:
     pesq = None
 
-from pystoi import stoi
+try:
+    from pystoi import stoi
+except ImportError:
+    stoi = None
 
 
 def find_pipe_root(start: Path) -> Path:
@@ -85,7 +88,7 @@ CFG = {
     "T": 400,
     "beta_0": 0.0001,
     "beta_T": 0.02,
-    "w_video": 2.0,
+    "w_video": 1.0,
     "s2_cond_drop_prob": 0.2,
 }
 CFG["vid_2_aud"] = CFG["sr"] / CFG["fps"] / CFG["hop_length"]
@@ -134,7 +137,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--guidance-weights",
-        default="0.0,1.0,2.0,4.0",
+        default="0.0,0.5,1.0,1.5,2.0",
         help="Comma-separated fixed guidance weights for the ablation.",
     )
     parser.add_argument(
@@ -172,6 +175,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=OUTPUT_DIR,
         help="Directory for metrics, plots, and reports.",
+    )
+    parser.add_argument(
+        "--max-face-frames",
+        type=int,
+        default=5,
+        help="Maximum number of extracted face-conditioning frames to use per clip when available.",
     )
     parser.add_argument(
         "--device",
@@ -242,6 +251,23 @@ def face_tfm():
     )
 
 
+def find_face_paths(clip_id: str, max_frames: int) -> list[Path]:
+    multi_paths = sorted(FACE_DIR.glob(f"{clip_id}_face_*.jpg"))
+    if multi_paths:
+        return multi_paths[:max_frames]
+    legacy_path = FACE_DIR / f"{clip_id}_face.jpg"
+    if legacy_path.exists():
+        return [legacy_path]
+    raise FileNotFoundError(f"Face conditioning image(s) not found for clip '{clip_id}' under {FACE_DIR}")
+
+
+def load_face_tensor(clip_id: str, transform, device: torch.device, max_frames: int) -> torch.Tensor:
+    frames = [transform(Image.open(path).convert("RGB")) for path in find_face_paths(clip_id, max_frames)]
+    if len(frames) == 1:
+        return frames[0].unsqueeze(0).to(device)
+    return torch.stack(frames, dim=0).unsqueeze(0).to(device)
+
+
 def load_torch_payload(path: Path) -> dict[str, Any]:
     return torch.load(path, map_location="cpu", weights_only=False)
 
@@ -257,6 +283,8 @@ def maybe_autocast(device: torch.device):
 
 
 def compute_metrics(gt_wav_path: Path, gen_wav_path: Path, sr: int = 16000) -> dict[str, float] | None:
+    if stoi is None:
+        raise ImportError("Please install pystoi to compute STOI metrics: uv pip install pystoi")
     gt, gt_sr = torchaudio.load(str(gt_wav_path))
     gen, gen_sr = torchaudio.load(str(gen_wav_path))
     if gt_sr != sr:
@@ -463,8 +491,11 @@ class Stage2Runtime:
         speaker_id = row["speaker_id"]
         roi_np = np.load(ROI_DIR / speaker_id / f"{clip_id}.npz")["mouth_rois"]
         roi_tensor = torch.FloatTensor(roi_tfm("val")(roi_np)).unsqueeze(0).unsqueeze(0).to(self.device)
-        face_tensor = face_tfm()(Image.open(FACE_DIR / f"{clip_id}_face.jpg").convert("RGB")).unsqueeze(0).to(
-            self.device
+        face_tensor = load_face_tensor(
+            clip_id=clip_id,
+            transform=face_tfm(),
+            device=self.device,
+            max_frames=self.args.max_face_frames,
         )
         return roi_np, roi_tensor, face_tensor
 
