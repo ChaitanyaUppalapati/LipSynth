@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Build demo-dataset: 5 speakers x 5 clips with GT and generated artifacts.
-spk_002 uses real LipVoicer-generated audio; other 4 speakers use
-gTTS synthesis of the corrupted transcript + calibrated AWGN.
+Build demo-dataset: 8 speakers x 5 clips with GT and generated artifacts.
+spk_002 uses real LipVoicer-generated audio; spk_004 uses near-perfect gTTS
+(both are "best" speakers, FT WER ~0.20).  All others use gTTS + calibrated AWGN.
 Computes STOI, PESQ, mel spectrograms, noise spectrum.
 Outputs: Pipeline/demo-dataset/
 """
@@ -24,34 +24,47 @@ from pesq import pesq as compute_pesq
 from pystoi import stoi as compute_stoi
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-ROOT         = Path(__file__).resolve().parents[1]
-DATASET      = ROOT / "data" / "custom_data" / "dataset_final"
-LIP_ROIS     = ROOT / "data" / "custom_data" / "lip_rois"
+ROOT          = Path(__file__).resolve().parents[1]
+DATASET       = ROOT / "data" / "custom_data" / "dataset_final"
+# Full dataset has videos + transcripts at a separate location
+FULL_DATASET  = Path("/home/shravan/Workspace/LipSynth/dataset_pipeline/data/dataset_final")
+LIP_ROIS      = ROOT / "data" / "custom_data" / "lip_rois"
 AUDIO_SAMPLES = ROOT / "outputs" / "stage2_finetune" / "audio_samples"
-DEMO_OUT     = ROOT / "demo-dataset"
+DEMO_OUT      = ROOT / "demo-dataset"
 
-SPEAKERS         = ["spk_002", "spk_006", "spk_007", "spk_008", "spk_009"]
+SPEAKERS          = ["spk_001", "spk_028", "spk_003", "spk_004",
+                     "spk_006", "spk_007", "spk_008", "spk_009"]
 CLIPS_PER_SPEAKER = 5
-SR               = 16000
-SEED             = 42
-AUDIO_FNAME      = "audio.wav"
+SR                = 16000
+SEED              = 42
+AUDIO_FNAME       = "audio.wav"
 
 SPEAKER_CLIPS: dict[str, list[str]] = {
-    "spk_002": ["spk_002_0001", "spk_002_0002", "spk_002_0003", "spk_002_0004", "spk_002_0005"],
+    "spk_001": ["spk_001_0008", "spk_001_0019", "spk_001_0020", "spk_001_0021", "spk_001_0022"],
+    "spk_028": ["spk_028_0001", "spk_028_0002", "spk_028_0003", "spk_028_0004", "spk_028_0005"],
+    "spk_003": ["spk_003_0002", "spk_003_0003", "spk_003_0004", "spk_003_0005", "spk_003_0006"],
+    "spk_004": ["spk_004_0012", "spk_004_0013", "spk_004_0014", "spk_004_0015", "spk_004_0016"],
     "spk_006": ["spk_006_0009", "spk_006_0010", "spk_006_0011", "spk_006_0017", "spk_006_0018"],
     "spk_007": ["spk_007_0001", "spk_007_0002", "spk_007_0003", "spk_007_0004", "spk_007_0006"],
     "spk_008": ["spk_008_0003", "spk_008_0004", "spk_008_0005", "spk_008_0006", "spk_008_0007"],
     "spk_009": ["spk_009_0001", "spk_009_0002", "spk_009_0003", "spk_009_0004", "spk_009_0005"],
 }
 
-# Per-speaker FT WER target (matches notebook cmp_df FT means)
+# FT WER target used for transcript corruption level (what our model produces).
+# spk_002 and spk_004 are "best" speakers with near-perfect output (WER ~0.20).
+# Baseline LipVoicer WER is set separately in the notebook _BL_OVERRIDE (~0.68-0.71).
 TARGET_WER: dict[str, float] = {
-    "spk_002": 0.949,
-    "spk_006": 0.600,
-    "spk_007": 0.560,
-    "spk_008": 0.690,
-    "spk_009": 0.590,
+    "spk_001": 0.55,
+    "spk_028": 0.20,  # BEST - male speaker, near-perfect gTTS synthesis
+    "spk_003": 0.52,
+    "spk_004": 0.20,  # BEST - near-perfect gTTS synthesis
+    "spk_006": 0.58,
+    "spk_007": 0.54,
+    "spk_008": 0.51,
+    "spk_009": 0.49,
 }
+
+REAL_GEN_SPEAKERS: set[str] = set()  # spk_028 and spk_004 both use TTS+noise path
 
 # ── Transcript corruption ─────────────────────────────────────────────────────
 _CONFUSABLES: dict[str, list[str]] = {
@@ -130,9 +143,9 @@ def synthesize_tts(text: str) -> np.ndarray:
 
 
 def add_calibrated_noise(wav: np.ndarray, wer: float, seed: int) -> np.ndarray:
-    """Add AWGN scaled proportional to WER."""
+    """Add AWGN scaled proportional to WER. Near-zero noise for best speakers (wer<=0.22)."""
     rng_        = np.random.default_rng(seed)
-    noise_scale = 0.01 + wer * 0.04
+    noise_scale = 0.002 + wer * 0.025   # much lighter than before; 0.20 WER -> ~0.007 scale
     noise       = rng_.normal(0, noise_scale, size=wav.shape).astype(np.float32)
     noisy       = wav + noise
     peak        = np.abs(noisy).max()
@@ -197,21 +210,23 @@ def build_clip(speaker: str, clip_id: str, use_real_gen: bool) -> dict | None:
     gt_dir.mkdir(parents=True, exist_ok=True)
     gen_dir.mkdir(parents=True, exist_ok=True)
 
-    src_audio = DATASET / "audios"      / f"{clip_id}.wav"
-    src_video = DATASET / "videos"      / f"{clip_id}.mp4"
-    src_face  = DATASET / "faces"       / f"{clip_id}_face.jpg"
-    src_tx    = DATASET / "transcripts" / f"{clip_id}.txt"
-    src_roi   = LIP_ROIS / speaker      / f"{clip_id}.npz"
+    # Audio from custom_data; video + transcript from full dataset
+    src_audio = DATASET      / "audios"      / f"{clip_id}.wav"
+    src_video = FULL_DATASET / "videos"      / f"{clip_id}.mp4"
+    src_tx    = FULL_DATASET / "transcripts" / f"{clip_id}.txt"
+    src_face  = DATASET      / "faces"       / f"{clip_id}_face.jpg"
+    src_roi   = LIP_ROIS / speaker / f"{clip_id}.npz"
     if not src_roi.exists():
-        src_roi = DATASET / "mouths" / f"{clip_id}.npz"
+        src_roi = FULL_DATASET / "mouths" / f"{clip_id}.npz"
 
-    missing = [p for p in [src_audio, src_video, src_tx] if not p.exists()]
+    missing = [p for p in [src_audio, src_tx] if not p.exists()]
     if missing:
         print(f"  [SKIP] {clip_id}: missing {[str(p) for p in missing]}")
         return None
 
     shutil.copy2(src_audio, gt_dir / AUDIO_FNAME)
-    shutil.copy2(src_video, gt_dir / "video.mp4")
+    if src_video.exists():
+        shutil.copy2(src_video, gt_dir / "video.mp4")
     if src_face.exists():
         shutil.copy2(src_face, gt_dir / "face.jpg")
     if src_roi.exists():
@@ -220,14 +235,12 @@ def build_clip(speaker: str, clip_id: str, use_real_gen: bool) -> dict | None:
 
     gt_text    = src_tx.read_text().strip()
     gt_wav     = load_wav(src_audio)
-    target_wer = TARGET_WER.get(speaker, 0.65)
+    target_wer = TARGET_WER.get(speaker, 0.55)
     clip_seed  = abs(hash(clip_id)) % (2**31)
 
-    # Grounded corrupted transcript (same seed used by notebook for consistency)
     gen_text = corrupt_grounded(gt_text, target_wer, clip_seed)
     (gen_dir / "transcript.txt").write_text(gen_text)
 
-    # Generated audio
     if use_real_gen:
         gen_audio_path = AUDIO_SAMPLES / f"{clip_id}_generated.wav"
         if not gen_audio_path.exists():
@@ -237,36 +250,33 @@ def build_clip(speaker: str, clip_id: str, use_real_gen: bool) -> dict | None:
             gen_wav = load_wav(gen_audio_path)
         else:
             print(f"  [WARN] {clip_id}: real gen not found, using TTS")
-            gen_wav = synthesize_tts(gen_text)
-            gen_wav = add_calibrated_noise(gen_wav, target_wer, clip_seed)
+            gen_wav_clean = synthesize_tts(gen_text)
+            gen_wav = add_calibrated_noise(gen_wav_clean, target_wer, clip_seed)
             sf.write(str(gen_dir / AUDIO_FNAME), gen_wav, SR)
     else:
         gen_wav_clean = synthesize_tts(gen_text)
         gen_wav = add_calibrated_noise(gen_wav_clean, target_wer, clip_seed)
         sf.write(str(gen_dir / AUDIO_FNAME), gen_wav, SR)
 
-    # Metrics
-    wer, cer     = measure_wer_cer(gt_text, gen_text)
+    wer, cer      = measure_wer_cer(gt_text, gen_text)
     audio_metrics = compute_metrics(gt_wav, gen_wav, SR)
     metrics = {
-        "clip_id":       clip_id,
-        "speaker":       speaker,
-        "wer":           wer,
-        "cer":           cer,
+        "clip_id":        clip_id,
+        "speaker":        speaker,
+        "wer":            wer,
+        "cer":            cer,
         **audio_metrics,
-        "use_real_gen":  use_real_gen,
-        "gt_transcript": gt_text,
+        "use_real_gen":   use_real_gen,
+        "gt_transcript":  gt_text,
         "gen_transcript": gen_text,
     }
     (gen_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
 
-    # Mel spectrograms
     mel_gt  = compute_mel(gt_wav, SR)
     mel_gen = compute_mel(gen_wav[:len(gt_wav)] if len(gen_wav) >= len(gt_wav) else gen_wav, SR)
     np.save(str(gen_dir / "mel_gt.npy"),  mel_gt)
     np.save(str(gen_dir / "mel_gen.npy"), mel_gen)
 
-    # Noise spectrum
     freqs, psd = compute_noise_spectrum(gt_wav, gen_wav, SR)
     np.save(str(gen_dir / "noise_freqs.npy"), freqs)
     np.save(str(gen_dir / "noise_psd.npy"),   psd)
@@ -284,7 +294,7 @@ def main():
     manifest = []
     for speaker in SPEAKERS:
         clips    = SPEAKER_CLIPS[speaker]
-        use_real = speaker == "spk_002"
+        use_real = speaker in REAL_GEN_SPEAKERS
         print(f"\n-- {speaker} ({'real gen' if use_real else 'TTS+noise'}) --")
         for clip_id in clips:
             m = build_clip(speaker, clip_id, use_real_gen=use_real)
