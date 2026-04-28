@@ -5,6 +5,7 @@ description = "Stage 1 + Stage 2 lip-to-speech project environment managed with 
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "edge-tts>=7.2.8",
   "gtts>=2.5.4",
   "ipykernel>=7.2.0",
   "jiwer>=4.0.0",
